@@ -130,6 +130,16 @@ class MedicalRecordsApp:
         self.notebook.add(self.detail_frame, text="Chi tiết Bệnh án")
         self.create_detail_tab()
         
+        # Tab 5: Quản lý loại xét nghiệm
+        self.test_type_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.test_type_frame, text="Quản lý Loại Xét nghiệm")
+        self.create_test_type_tab()
+        
+        # Tab 6: Quản lý loại thuốc
+        self.medicine_type_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.medicine_type_frame, text="Quản lý Loại Thuốc")
+        self.create_medicine_type_tab()
+        
         # Tab 4: Thống kê
         self.stats_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.stats_frame, text="Thống kê")
@@ -475,11 +485,42 @@ class MedicalRecordsApp:
         record_scrollbar.pack(side='right', fill='y')
         
         self.record_tree.bind('<Double-1>', self.on_record_select)
+        # Gán sự kiện nhấp chuột trái
+        self.record_tree.bind('<ButtonRelease-1>', self.on_record_select_left_click)
         
         # Load danh sách loại xét nghiệm và thuốc
         self.load_test_types()
         self.load_medicine_types()
         self.load_patient_combo()
+    def on_record_select_left_click(self, event):
+        """Xử lý khi nhấp chuột trái vào bệnh án: điền dữ liệu vào form và tải xét nghiệm/đơn thuốc"""
+        selected = self.record_tree.selection()
+        if selected:
+            record_id = self.record_tree.item(selected[0])['values'][0]
+            self.current_record_id = record_id  # Lưu record_id để sử dụng cho cập nhật
+
+            # Lấy dữ liệu bệnh án
+            self.cursor.execute('SELECT * FROM medical_records WHERE id=?', (record_id,))
+            record = self.cursor.fetchone()
+            
+            if record:
+                # Điền dữ liệu vào form
+                self.visit_date.delete(0, tk.END)
+                self.visit_date.insert(0, record[2])
+                self.diagnosis.delete(0, tk.END)
+                self.diagnosis.insert(0, record[3])
+                self.symptoms.delete('1.0', tk.END)
+                self.symptoms.insert('1.0', record[4] or '')
+                self.treatment.delete('1.0', tk.END)
+                self.treatment.insert('1.0', record[5] or '')
+                self.notes.delete('1.0', tk.END)
+                self.notes.insert('1.0', record[7] or '')
+                self.doctor_name.delete(0, tk.END)
+                self.doctor_name.insert(0, record[8])
+
+                # Tải kết quả xét nghiệm và đơn thuốc
+                self.load_test_results(record_id)
+                self.load_prescriptions(record_id)
 
 
     def create_detail_tab(self):
@@ -587,6 +628,93 @@ class MedicalRecordsApp:
         # Cập nhật thống kê ban đầu
         self.update_stats()
     
+    def create_test_type_tab(self):
+        """Tạo tab quản lý loại xét nghiệm"""
+        frame = self.test_type_frame
+
+        # Frame nhập liệu
+        form_frame = ttk.LabelFrame(frame, text="Thông tin loại xét nghiệm", padding=10)
+        form_frame.pack(fill='x', padx=10, pady=5)
+
+        ttk.Label(form_frame, text="Tên xét nghiệm:").grid(row=0, column=0, sticky='w', padx=5, pady=5)
+        self.test_type_name = ttk.Entry(form_frame, width=40)
+        self.test_type_name.grid(row=0, column=1, padx=5, pady=5)
+
+        ttk.Label(form_frame, text="Mô tả:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
+        self.test_type_description = ttk.Entry(form_frame, width=40)
+        self.test_type_description.grid(row=1, column=1, padx=5, pady=5)
+
+        # Buttons
+        button_frame = ttk.Frame(form_frame)
+        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+        ttk.Button(button_frame, text="Thêm", command=self.add_test_type).pack(side='left', padx=5)
+        ttk.Button(button_frame, text="Cập nhật", command=self.update_test_type).pack(side='left', padx=5)
+        ttk.Button(button_frame, text="Xóa", command=self.delete_test_type).pack(side='left', padx=5)
+        ttk.Button(button_frame, text="Làm mới", command=self.clear_test_type_form).pack(side='left', padx=5)
+
+        # Treeview danh sách loại xét nghiệm
+        list_frame = ttk.LabelFrame(frame, text="Danh sách loại xét nghiệm", padding=10)
+        list_frame.pack(fill='both', expand=True, padx=10, pady=5)
+
+        columns = ('ID', 'Tên xét nghiệm', 'Mô tả')
+        self.test_type_tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=15)
+        for col in columns:
+            self.test_type_tree.heading(col, text=col)
+            self.test_type_tree.column(col, width=200)
+        
+        scrollbar = ttk.Scrollbar(list_frame, orient='vertical', command=self.test_type_tree.yview)
+        self.test_type_tree.configure(yscrollcommand=scrollbar.set)
+        self.test_type_tree.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+        
+        self.test_type_tree.bind('<ButtonRelease-1>', self.on_test_type_select)
+        
+        # Load danh sách
+        self.load_test_types_list()
+
+    def create_medicine_type_tab(self):
+        """Tạo tab quản lý loại thuốc"""
+        frame = self.medicine_type_frame
+
+        # Frame nhập liệu
+        form_frame = ttk.LabelFrame(frame, text="Thông tin loại thuốc", padding=10)
+        form_frame.pack(fill='x', padx=10, pady=5)
+
+        ttk.Label(form_frame, text="Tên thuốc:").grid(row=0, column=0, sticky='w', padx=5, pady=5)
+        self.medicine_type_name = ttk.Entry(form_frame, width=40)
+        self.medicine_type_name.grid(row=0, column=1, padx=5, pady=5)
+
+        ttk.Label(form_frame, text="Mô tả:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
+        self.medicine_type_description = ttk.Entry(form_frame, width=40)
+        self.medicine_type_description.grid(row=1, column=1, padx=5, pady=5)
+
+        # Buttons
+        button_frame = ttk.Frame(form_frame)
+        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+        ttk.Button(button_frame, text="Thêm", command=self.add_medicine_type).pack(side='left', padx=5)
+        ttk.Button(button_frame, text="Cập nhật", command=self.update_medicine_type).pack(side='left', padx=5)
+        ttk.Button(button_frame, text="Xóa", command=self.delete_medicine_type).pack(side='left', padx=5)
+        ttk.Button(button_frame, text="Làm mới", command=self.clear_medicine_type_form).pack(side='left', padx=5)
+
+        # Treeview danh sách loại thuốc
+        list_frame = ttk.LabelFrame(frame, text="Danh sách loại thuốc", padding=10)
+        list_frame.pack(fill='both', expand=True, padx=10, pady=5)
+
+        columns = ('ID', 'Tên thuốc', 'Mô tả')
+        self.medicine_type_tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=15)
+        for col in columns:
+            self.medicine_type_tree.heading(col, text=col)
+            self.medicine_type_tree.column(col, width=200)
+        
+        scrollbar = ttk.Scrollbar(list_frame, orient='vertical', command=self.medicine_type_tree.yview)
+        self.medicine_type_tree.configure(yscrollcommand=scrollbar.set)
+        self.medicine_type_tree.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+        
+        self.medicine_type_tree.bind('<ButtonRelease-1>', self.on_medicine_type_select)
+        
+        # Load danh sách
+        self.load_medicine_types_list()
     def add_patient(self):
         """Thêm bệnh nhân mới"""
         name = self.patient_name.get().strip()
@@ -703,7 +831,7 @@ class MedicalRecordsApp:
                 messagebox.showerror("Lỗi", f"Không thể xóa bệnh nhân: {e}")
     
     def save_record(self):
-        """Lưu bệnh án mới"""
+        """Lưu bệnh án mới cùng với kết quả xét nghiệm và đơn thuốc"""
         if not self.validate_record_form():
             return
         
@@ -713,25 +841,85 @@ class MedicalRecordsApp:
                 messagebox.showwarning("Cảnh báo", "Vui lòng chọn bệnh nhân!")
                 return
             
+            # Lưu bệnh án vào bảng medical_records
             self.cursor.execute('''
                 INSERT INTO medical_records 
-                (patient_id, visit_date, diagnosis, symptoms, treatment, prescription, notes, doctor_name)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (patient_id, visit_date, diagnosis, symptoms, treatment, notes, doctor_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (
                 patient_id,
                 self.visit_date.get(),
                 self.diagnosis.get(),
                 self.symptoms.get('1.0', tk.END).strip(),
                 self.treatment.get('1.0', tk.END).strip(),
-                self.prescription.get('1.0', tk.END).strip(),
                 self.notes.get('1.0', tk.END).strip(),
                 self.doctor_name.get()
             ))
             self.conn.commit()
-            messagebox.showinfo("Thành công", "Đã lưu bệnh án!")
+
+            # Lấy ID của bệnh án vừa lưu
+            self.cursor.execute("SELECT last_insert_rowid()")
+            self.current_record_id = self.cursor.fetchone()[0]
+
+            # Lưu kết quả xét nghiệm từ test_tree
+            for item in self.test_tree.get_children():
+                test_data = self.test_tree.item(item)['values']
+                test_type_id = int(test_data[1].split(' - ')[0])  # Lấy test_type_id từ "ID - Tên"
+                result = test_data[2]
+                notes = test_data[3]
+                if not result:
+                    messagebox.showwarning("Cảnh báo", "Kết quả xét nghiệm không được để trống!")
+                    self.conn.rollback()
+                    return
+                self.cursor.execute('''
+                    INSERT INTO test_results (record_id, test_type_id, result, test_date, notes)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (
+                    self.current_record_id,
+                    test_type_id,
+                    result,
+                    self.visit_date.get(),
+                    notes
+                ))
+
+            # Lưu đơn thuốc từ prescription_tree
+            for item in self.prescription_tree.get_children():
+                prescription_data = self.prescription_tree.item(item)['values']
+                medicine_id = int(prescription_data[1].split(' - ')[0])  # Lấy medicine_id từ "ID - Tên"
+                dosage = prescription_data[2]
+                quantity = prescription_data[3]
+                instructions = prescription_data[4]
+                if not dosage or not quantity:
+                    messagebox.showwarning("Cảnh báo", "Liều lượng và số lượng thuốc không được để trống!")
+                    self.conn.rollback()
+                    return
+                try:
+                    quantity = int(quantity)
+                except ValueError:
+                    messagebox.showwarning("Cảnh báo", "Số lượng thuốc phải là số nguyên!")
+                    self.conn.rollback()
+                    return
+                self.cursor.execute('''
+                    INSERT INTO prescriptions (record_id, medicine_id, dosage, quantity, instructions)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (
+                    self.current_record_id,
+                    medicine_id,
+                    dosage,
+                    quantity,
+                    instructions
+                ))
+
+            self.conn.commit()
+            messagebox.showinfo("Thành công", "Đã lưu bệnh án, kết quả xét nghiệm và đơn thuốc!")
             self.clear_record_form()
+            
+            # Cập nhật danh sách bệnh án
             self.load_records()
+            self.load_medical_records(patient_id)  # Cập nhật medical_record_tree trong tab Chi tiết
+            
         except Exception as e:
+            self.conn.rollback()
             messagebox.showerror("Lỗi", f"Không thể lưu bệnh án: {str(e)}")
     
     def update_record(self):
@@ -746,16 +934,21 @@ class MedicalRecordsApp:
         
         try:
             record_id = self.record_tree.item(selected[0])['values'][0]
+            patient_id = self.get_selected_patient_id()
+            if not patient_id:
+                messagebox.showwarning("Cảnh báo", "Vui lòng chọn bệnh nhân!")
+                return
+            
+            # Cập nhật bệnh án trong bảng medical_records
             self.cursor.execute('''
                 UPDATE medical_records 
-                SET visit_date=?, diagnosis=?, symptoms=?, treatment=?, prescription=?, notes=?, doctor_name=?
+                SET visit_date=?, diagnosis=?, symptoms=?, treatment=?, notes=?, doctor_name=?
                 WHERE id=?
             ''', (
                 self.visit_date.get(),
                 self.diagnosis.get(),
                 self.symptoms.get('1.0', tk.END).strip(),
                 self.treatment.get('1.0', tk.END).strip(),
-                self.prescription.get('1.0', tk.END).strip(),
                 self.notes.get('1.0', tk.END).strip(),
                 self.doctor_name.get(),
                 record_id
@@ -763,10 +956,14 @@ class MedicalRecordsApp:
             self.conn.commit()
             messagebox.showinfo("Thành công", "Đã cập nhật bệnh án!")
             self.clear_record_form()
+            
+            # Cập nhật danh sách bệnh án
             self.load_records()
+            self.load_medical_records(patient_id)  # Cập nhật medical_record_tree trong tab Chi tiết
+            
         except Exception as e:
             messagebox.showerror("Lỗi", f"Không thể cập nhật: {str(e)}")
-    
+
     def delete_record(self):
         """Xóa bệnh án"""
         selected = self.record_tree.selection()
@@ -774,13 +971,33 @@ class MedicalRecordsApp:
             messagebox.showwarning("Cảnh báo", "Vui lòng chọn bệnh án để xóa!")
             return
         
+        record_id = self.record_tree.item(selected[0])['values'][0]
+        patient_id = self.get_selected_patient_id()
+        if not patient_id:
+            messagebox.showwarning("Cảnh báo", "Vui lòng chọn bệnh nhân!")
+            return
+        
+        # Kiểm tra xem bệnh án có kết quả xét nghiệm hoặc đơn thuốc không
+        self.cursor.execute("SELECT COUNT(*) FROM test_results WHERE record_id = ?", (record_id,))
+        test_count = self.cursor.fetchone()[0]
+        self.cursor.execute("SELECT COUNT(*) FROM prescriptions WHERE record_id = ?", (record_id,))
+        prescription_count = self.cursor.fetchone()[0]
+        
+        if test_count > 0 or prescription_count > 0:
+            messagebox.showerror("Lỗi", "Không thể xóa bệnh án vì có kết quả xét nghiệm hoặc đơn thuốc liên quan!")
+            return
+        
         if messagebox.askyesno("Xác nhận", "Bạn có chắc chắn muốn xóa bệnh án này?"):
             try:
-                record_id = self.record_tree.item(selected[0])['values'][0]
                 self.cursor.execute('DELETE FROM medical_records WHERE id=?', (record_id,))
                 self.conn.commit()
                 messagebox.showinfo("Thành công", "Đã xóa bệnh án!")
+                self.clear_record_form()
+                
+                # Cập nhật danh sách bệnh án
                 self.load_records()
+                self.load_medical_records(patient_id)  # Cập nhật medical_record_tree trong tab Chi tiết
+                
             except Exception as e:
                 messagebox.showerror("Lỗi", f"Không thể xóa: {str(e)}")
     
@@ -882,29 +1099,66 @@ class MedicalRecordsApp:
         self.load_records()
     
     def on_record_select(self, event):
-        """Xử lý khi chọn bệnh án"""
+        """Xử lý khi chọn bệnh án: chuyển sang tab Chi tiết Bệnh án và hiển thị thông tin"""
         selected = self.record_tree.selection()
         if selected:
             record_id = self.record_tree.item(selected[0])['values'][0]
+            self.current_record_id = record_id  # Lưu record_id để sử dụng trong tab Chi tiết
+
+            # Chuyển sang tab Chi tiết Bệnh án
+            self.notebook.select(self.detail_frame)
+
+            # Lấy dữ liệu bệnh án
             self.cursor.execute('SELECT * FROM medical_records WHERE id=?', (record_id,))
             record = self.cursor.fetchone()
             
             if record:
-                self.visit_date.delete(0, tk.END)
-                self.visit_date.insert(0, record[2])
-                self.diagnosis.delete(0, tk.END)
-                self.diagnosis.insert(0, record[3])
-                self.symptoms.delete('1.0', tk.END)
-                self.symptoms.insert('1.0', record[4])
-                self.treatment.delete('1.0', tk.END)
-                self.treatment.insert('1.0', record[5])
-                self.prescription.delete('1.0', tk.END)
-                self.prescription.insert('1.0', record[6])
-                self.notes.delete('1.0', tk.END)
-                self.notes.insert('1.0', record[7])
-                self.doctor_name.delete(0, tk.END)
-                self.doctor_name.insert(0, record[8])
-    
+                # Cập nhật thông tin bệnh nhân
+                patient_id = record[1]  # Giả định cột patient_id là cột thứ 2
+                self.cursor.execute('SELECT name FROM patients WHERE id=?', (patient_id,))
+                patient_name = self.cursor.fetchone()[0]
+                self.detail_patient_info.config(text=f"Bệnh nhân: {patient_name}")
+
+                # Tải danh sách bệnh án của bệnh nhân hiện tại vào medical_record_tree
+                self.load_medical_records(patient_id)
+
+                # Hiển thị chi tiết bệnh án được chọn trong selected_record_detail
+                self.selected_record_detail.delete('1.0', tk.END)
+                self.selected_record_detail.insert('1.0', 
+                    f"ID: {record[0]}\n"
+                    f"Ngày khám: {record[2]}\n"
+                    f"Chẩn đoán: {record[3]}\n"
+                    f"Triệu chứng: {record[4]}\n"
+                    f"Điều trị: {record[5]}\n"
+                    f"Bác sĩ: {record[8]}\n"
+                    f"Ghi chú: {record[7]}"
+                )
+
+                # Tải kết quả xét nghiệm và đơn thuốc
+                self.load_detail_test_results(record_id)
+                self.load_detail_prescriptions(record_id)
+
+                # Chọn bệnh án trong medical_record_tree
+                for item in self.medical_record_tree.get_children():
+                    if self.medical_record_tree.item(item)['values'][0] == record_id:
+                        self.medical_record_tree.selection_set(item)
+                        self.medical_record_tree.focus(item)
+                        break
+    def load_medical_records(self, patient_id):
+        """Tải danh sách bệnh án của bệnh nhân vào medical_record_tree"""
+        for item in self.medical_record_tree.get_children():
+            self.medical_record_tree.delete(item)
+        try:
+            self.cursor.execute('''
+                SELECT id, visit_date, diagnosis, symptoms, treatment, doctor_name, notes
+                FROM medical_records
+                WHERE patient_id = ?
+            ''', (patient_id,))
+            records = self.cursor.fetchall()
+            for record in records:
+                self.medical_record_tree.insert('', 'end', values=record)
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể tải danh sách bệnh án: {e}")
     def get_selected_patient_id(self):
         """Lấy ID bệnh nhân được chọn"""
         selected_text = self.record_patient_combo.get()
@@ -969,19 +1223,25 @@ class MedicalRecordsApp:
             self.patient_tree.selection_remove(item)
     
     def clear_record_form(self):
-        """Xóa nội dung form bệnh án"""
+        """Xóa dữ liệu trong form bệnh án"""
         self.visit_date.delete(0, tk.END)
-        self.visit_date.insert(0, datetime.now().strftime('%d/%m/%Y'))
         self.diagnosis.delete(0, tk.END)
         self.symptoms.delete('1.0', tk.END)
         self.treatment.delete('1.0', tk.END)
-        self.prescription.delete('1.0', tk.END)
         self.notes.delete('1.0', tk.END)
         self.doctor_name.delete(0, tk.END)
-        
-        # Clear selection trong treeview
-        for item in self.record_tree.selection():
-            self.record_tree.selection_remove(item)
+        self.test_result.delete(0, tk.END)
+        self.test_notes.delete(0, tk.END)
+        self.dosage.delete(0, tk.END)
+        self.quantity.delete(0, tk.END)
+        self.instructions.delete(0, tk.END)
+        if self.test_type_combo['values']:
+            self.test_type_combo.set(self.test_type_combo['values'][0])
+        if self.medicine_type_combo['values']:
+            self.medicine_type_combo.set(self.medicine_type_combo['values'][0])
+        self.test_tree.delete(*self.test_tree.get_children())
+        self.prescription_tree.delete(*self.prescription_tree.get_children())
+        self.current_record_id = None
     
     def view_record_detail(self):
         """Chuyển sang tab chi tiết bệnh án"""
@@ -1059,11 +1319,7 @@ class MedicalRecordsApp:
             messagebox.showerror("Lỗi", f"Không thể tải loại thuốc: {e}")
 
     def add_test_result(self):
-        """Thêm kết quả xét nghiệm"""
-        if not hasattr(self, 'current_record_id') or not self.current_record_id:
-            messagebox.showerror("Lỗi", "Vui lòng lưu bệnh án trước khi thêm xét nghiệm!")
-            return
-        
+        """Thêm kết quả xét nghiệm vào test_tree"""
         test_type = self.test_type_combo.get()
         result = self.test_result.get().strip()
         notes = self.test_notes.get().strip()
@@ -1072,15 +1328,15 @@ class MedicalRecordsApp:
             messagebox.showerror("Lỗi", "Vui lòng nhập loại xét nghiệm và kết quả!")
             return
         
-        test_type_id = test_type.split(' - ')[0]
         try:
-            self.cursor.execute('''
-                INSERT INTO test_results (record_id, test_type_id, result, test_date, notes)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (self.current_record_id, test_type_id, result, self.visit_date.get(), notes))
-            self.conn.commit()
-            messagebox.showinfo("Thành công", "Đã thêm kết quả xét nghiệm!")
-            self.load_test_results(self.current_record_id)
+            # Thêm vào test_tree với ID tạm thời (sẽ được cập nhật khi lưu vào DB)
+            self.test_tree.insert('', 'end', values=(
+                'TEMP',  # ID tạm thời
+                test_type,  # Lưu cả "ID - Tên" để sử dụng trong save_record
+                result,
+                notes
+            ))
+            messagebox.showinfo("Thành công", "Đã thêm kết quả xét nghiệm vào danh sách tạm thời!")
             self.clear_test_form()
         except Exception as e:
             messagebox.showerror("Lỗi", f"Không thể thêm xét nghiệm: {e}")
@@ -1103,11 +1359,7 @@ class MedicalRecordsApp:
                 messagebox.showerror("Lỗi", f"Không thể xóa xét nghiệm: {e}")
 
     def add_prescription(self):
-        """Thêm đơn thuốc"""
-        if not hasattr(self, 'current_record_id') or not self.current_record_id:
-            messagebox.showerror("Lỗi", "Vui lòng lưu bệnh án trước khi thêm đơn thuốc!")
-            return
-        
+        """Thêm đơn thuốc vào prescription_tree"""
         medicine_type = self.medicine_type_combo.get()
         dosage = self.dosage.get().strip()
         quantity = self.quantity.get().strip()
@@ -1118,15 +1370,16 @@ class MedicalRecordsApp:
             return
         
         try:
-            quantity = int(quantity)
-            medicine_id = medicine_type.split(' - ')[0]
-            self.cursor.execute('''
-                INSERT INTO prescriptions (record_id, medicine_id, dosage, quantity, instructions)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (self.current_record_id, medicine_id, dosage, quantity, instructions))
-            self.conn.commit()
-            messagebox.showinfo("Thành công", "Đã thêm đơn thuốc!")
-            self.load_prescriptions(self.current_record_id)
+            quantity = int(quantity)  # Kiểm tra số lượng là số nguyên
+            # Thêm vào prescription_tree với ID tạm thời (sẽ được cập nhật khi lưu vào DB)
+            self.prescription_tree.insert('', 'end', values=(
+                'TEMP',  # ID tạm thời
+                medicine_type,  # Lưu cả "ID - Tên" để sử dụng trong save_record
+                dosage,
+                quantity,
+                instructions
+            ))
+            messagebox.showinfo("Thành công", "Đã thêm đơn thuốc vào danh sách tạm thời!")
             self.clear_prescription_form()
         except ValueError:
             messagebox.showerror("Lỗi", "Số lượng phải là số nguyên!")
@@ -1223,31 +1476,35 @@ class MedicalRecordsApp:
             self.instructions.insert(0, prescription_data[4])
 
     def on_medical_record_select(self, event):
-        """Xử lý khi chọn bệnh án trong tab chi tiết"""
-        selection = self.medical_record_tree.selection()
-        if selection:
-            item = self.medical_record_tree.item(selection[0])
-            record_data = item['values']
-            record_id = record_data[0]
+        """Xử lý khi chọn bệnh án từ medical_record_tree trong tab Chi tiết Bệnh án"""
+        selected = self.medical_record_tree.selection()
+        if selected:
+            record_id = self.medical_record_tree.item(selected[0])['values'][0]
+            self.current_record_id = record_id
+
+            # Lấy dữ liệu bệnh án
+            self.cursor.execute('SELECT * FROM medical_records WHERE id=?', (record_id,))
+            record = self.cursor.fetchone()
             
-            detail_text = f"""
-ID: {record_data[0]}
-Ngày khám: {record_data[1]}
-Chẩn đoán: {record_data[2]}
-Triệu chứng: {record_data[3]}
-Điều trị: {record_data[4]}
-Bác sĩ: {record_data[5]}
-Ghi chú: {record_data[6]}
-"""
-            self.selected_record_detail.delete("1.0", tk.END)
-            self.selected_record_detail.insert("1.0", detail_text.strip())
-            
-            # Tải kết quả xét nghiệm và đơn thuốc
-            self.load_detail_test_results(record_id)
-            self.load_detail_prescriptions(record_id)
+            if record:
+                # Cập nhật chi tiết bệnh án trong selected_record_detail
+                self.selected_record_detail.delete('1.0', tk.END)
+                self.selected_record_detail.insert('1.0', 
+                    f"ID: {record[0]}\n"
+                    f"Ngày khám: {record[2]}\n"
+                    f"Chẩn đoán: {record[3]}\n"
+                    f"Triệu chứng: {record[4]}\n"
+                    f"Điều trị: {record[5]}\n"
+                    f"Bác sĩ: {record[8]}\n"
+                    f"Ghi chú: {record[7]}"
+                )
+
+                # Tải kết quả xét nghiệm và đơn thuốc
+                self.load_detail_test_results(record_id)
+                self.load_detail_prescriptions(record_id)
 
     def load_detail_test_results(self, record_id):
-        """Tải kết quả xét nghiệm trong tab chi tiết"""
+        """Tải kết quả xét nghiệm cho tab Chi tiết Bệnh án"""
         for item in self.detail_test_tree.get_children():
             self.detail_test_tree.delete(item)
         try:
@@ -1264,7 +1521,7 @@ Ghi chú: {record_data[6]}
             messagebox.showerror("Lỗi", f"Không thể tải kết quả xét nghiệm: {e}")
 
     def load_detail_prescriptions(self, record_id):
-        """Tải đơn thuốc trong tab chi tiết"""
+        """Tải đơn thuốc cho tab Chi tiết Bệnh án"""
         for item in self.detail_prescription_tree.get_children():
             self.detail_prescription_tree.delete(item)
         try:
@@ -1312,6 +1569,212 @@ Ghi chú: {record_data[6]}
     #         self.update_stats()
     #     except Exception as e:
     #         messagebox.showerror("Lỗi", f"Không thể lưu bệnh án: {e}")
+
+    def add_test_type(self):
+        """Thêm loại xét nghiệm"""
+        name = self.test_type_name.get().strip()
+        description = self.test_type_description.get().strip()
+
+        if not name:
+            messagebox.showerror("Lỗi", "Vui lòng nhập tên xét nghiệm!")
+            return
+
+        try:
+            self.cursor.execute('''
+                INSERT INTO test_types (name, description)
+                VALUES (?, ?)
+            ''', (name, description))
+            self.conn.commit()
+            messagebox.showinfo("Thành công", "Đã thêm loại xét nghiệm!")
+            self.clear_test_type_form()
+            self.load_test_types_list()
+            self.load_test_types()  # Cập nhật combobox trong tab bệnh án
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể thêm loại xét nghiệm: {e}")
+
+    def update_test_type(self):
+        """Cập nhật loại xét nghiệm"""
+        selection = self.test_type_tree.selection()
+        if not selection:
+            messagebox.showerror("Lỗi", "Vui lòng chọn một loại xét nghiệm để cập nhật!")
+            return
+
+        test_type_id = self.test_type_tree.item(selection[0])['values'][0]
+        name = self.test_type_name.get().strip()
+        description = self.test_type_description.get().strip()
+
+        if not name:
+            messagebox.showerror("Lỗi", "Vui lòng nhập tên xét nghiệm!")
+            return
+
+        try:
+            self.cursor.execute('''
+                UPDATE test_types
+                SET name = ?, description = ?
+                WHERE id = ?
+            ''', (name, description, test_type_id))
+            self.conn.commit()
+            messagebox.showinfo("Thành công", "Đã cập nhật loại xét nghiệm!")
+            self.clear_test_type_form()
+            self.load_test_types_list()
+            self.load_test_types()  # Cập nhật combobox trong tab bệnh án
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể cập nhật loại xét nghiệm: {e}")
+
+    def delete_test_type(self):
+        """Xóa loại xét nghiệm"""
+        selection = self.test_type_tree.selection()
+        if not selection:
+            messagebox.showerror("Lỗi", "Vui lòng chọn một loại xét nghiệm để xóa!")
+            return
+
+        test_type_id = self.test_type_tree.item(selection[0])['values'][0]
+        if messagebox.askyesno("Xác nhận", "Bạn có chắc muốn xóa loại xét nghiệm này?"):
+            try:
+                # Kiểm tra xem loại xét nghiệm có được sử dụng trong test_results
+                self.cursor.execute("SELECT COUNT(*) FROM test_results WHERE test_type_id = ?", (test_type_id,))
+                if self.cursor.fetchone()[0] > 0:
+                    messagebox.showerror("Lỗi", "Không thể xóa vì loại xét nghiệm này đang được sử dụng!")
+                    return
+
+                self.cursor.execute("DELETE FROM test_types WHERE id = ?", (test_type_id,))
+                self.conn.commit()
+                messagebox.showinfo("Thành công", "Đã xóa loại xét nghiệm!")
+                self.clear_test_type_form()
+                self.load_test_types_list()
+                self.load_test_types()  # Cập nhật combobox trong tab bệnh án
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể xóa loại xét nghiệm: {e}")
+
+    def clear_test_type_form(self):
+        """Làm mới form loại xét nghiệm"""
+        self.test_type_name.delete(0, tk.END)
+        self.test_type_description.delete(0, tk.END)
+
+    def on_test_type_select(self, event):
+        """Xử lý khi chọn loại xét nghiệm từ treeview"""
+        selection = self.test_type_tree.selection()
+        if selection:
+            item = self.test_type_tree.item(selection[0])
+            test_type_data = item['values']
+            self.clear_test_type_form()
+            self.test_type_name.insert(0, test_type_data[1])
+            self.test_type_description.insert(0, test_type_data[2])
+
+    def load_test_types_list(self):
+        """Tải danh sách loại xét nghiệm"""
+        for item in self.test_type_tree.get_children():
+            self.test_type_tree.delete(item)
+        try:
+            self.cursor.execute("SELECT id, name, description FROM test_types")
+            test_types = self.cursor.fetchall()
+            for test_type in test_types:
+                self.test_type_tree.insert('', 'end', values=test_type)
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể tải danh sách loại xét nghiệm: {e}")
+
+    def add_medicine_type(self):
+        """Thêm loại thuốc"""
+        name = self.medicine_type_name.get().strip()
+        description = self.medicine_type_description.get().strip()
+
+        if not name:
+            messagebox.showerror("Lỗi", "Vui lòng nhập tên thuốc!")
+            return
+
+        try:
+            self.cursor.execute('''
+                INSERT INTO medicine_types (name, description)
+                VALUES (?, ?)
+            ''', (name, description))
+            self.conn.commit()
+            messagebox.showinfo("Thành công", "Đã thêm loại thuốc!")
+            self.clear_medicine_type_form()
+            self.load_medicine_types_list()
+            self.load_medicine_types()  # Cập nhật combobox trong tab bệnh án
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể thêm loại thuốc: {e}")
+
+    def update_medicine_type(self):
+        """Cập nhật loại thuốc"""
+        selection = self.medicine_type_tree.selection()
+        if not selection:
+            messagebox.showerror("Lỗi", "Vui lòng chọn một loại thuốc để cập nhật!")
+            return
+
+        medicine_type_id = self.medicine_type_tree.item(selection[0])['values'][0]
+        name = self.medicine_type_name.get().strip()
+        description = self.medicine_type_description.get().strip()
+
+        if not name:
+            messagebox.showerror("Lỗi", "Vui lòng nhập tên thuốc!")
+            return
+
+        try:
+            self.cursor.execute('''
+                UPDATE medicine_types
+                SET name = ?, description = ?
+                WHERE id = ?
+            ''', (name, description, medicine_type_id))
+            self.conn.commit()
+            messagebox.showinfo("Thành công", "Đã cập nhật loại thuốc!")
+            self.clear_medicine_type_form()
+            self.load_medicine_types_list()
+            self.load_medicine_types()  # Cập nhật combobox trong tab bệnh án
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể cập nhật loại thuốc: {e}")
+
+    def delete_medicine_type(self):
+        """Xóa loại thuốc"""
+        selection = self.medicine_type_tree.selection()
+        if not selection:
+            messagebox.showerror("Lỗi", "Vui lòng chọn một loại thuốc để xóa!")
+            return
+
+        medicine_type_id = self.medicine_type_tree.item(selection[0])['values'][0]
+        if messagebox.askyesno("Xác nhận", "Bạn có chắc muốn xóa loại thuốc này?"):
+            try:
+                # Kiểm tra xem loại thuốc có được sử dụng trong prescriptions
+                self.cursor.execute("SELECT COUNT(*) FROM prescriptions WHERE medicine_id = ?", (medicine_type_id,))
+                if self.cursor.fetchone()[0] > 0:
+                    messagebox.showerror("Lỗi", "Không thể xóa vì loại thuốc này đang được sử dụng!")
+                    return
+
+                self.cursor.execute("DELETE FROM medicine_types WHERE id = ?", (medicine_type_id,))
+                self.conn.commit()
+                messagebox.showinfo("Thành công", "Đã xóa loại thuốc!")
+                self.clear_medicine_type_form()
+                self.load_medicine_types_list()
+                self.load_medicine_types()  # Cập nhật combobox trong tab bệnh án
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể xóa loại thuốc: {e}")
+
+    def clear_medicine_type_form(self):
+        """Làm mới form loại thuốc"""
+        self.medicine_type_name.delete(0, tk.END)
+        self.medicine_type_description.delete(0, tk.END)
+
+    def on_medicine_type_select(self, event):
+        """Xử lý khi chọn loại thuốc từ treeview"""
+        selection = self.medicine_type_tree.selection()
+        if selection:
+            item = self.medicine_type_tree.item(selection[0])
+            medicine_type_data = item['values']
+            self.clear_medicine_type_form()
+            self.medicine_type_name.insert(0, medicine_type_data[1])
+            self.medicine_type_description.insert(0, medicine_type_data[2])
+
+    def load_medicine_types_list(self):
+        """Tải danh sách loại thuốc"""
+        for item in self.medicine_type_tree.get_children():
+            self.medicine_type_tree.delete(item)
+        try:
+            self.cursor.execute("SELECT id, name, description FROM medicine_types")
+            medicine_types = self.cursor.fetchall()
+            for medicine_type in medicine_types:
+                self.medicine_type_tree.insert('', 'end', values=medicine_type)
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể tải danh sách loại thuốc: {e}")
         
     def __del__(self):
         """Đóng kết nối database khi thoát"""
