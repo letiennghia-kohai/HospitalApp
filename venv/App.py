@@ -300,30 +300,36 @@ class MedicalRecordsApp:
             print(f"Lỗi khi load bệnh án: {e}")
 
     # Hàm xử lý khi chọn bệnh nhân (để fill form)
-    def on_patient_select(self, event):
-        """Xử lý khi chọn bệnh nhân để fill form"""
-        selection = self.patient_tree.selection()
-        if selection:
-            item = self.patient_tree.item(selection[0])
-            patient_data = item['values']
+    # def on_patient_select(self, event):
+    #     """Xử lý khi chọn bệnh nhân để fill form"""
+    #     selection = self.patient_tree.selection()
+    #     if selection:
+    #         item = self.patient_tree.item(selection[0])
+    #         patient_data = item['values']
             
-            if patient_data:
-                # Clear form trước
-                self.clear_patient_form()
+    #         if patient_data:
+    #             patient_id = patient_data[0]
+    #             patient_name = patient_data[1]
                 
-                # Fill dữ liệu vào form
-                self.patient_name.insert(0, patient_data[1])
+    #             # Lưu thông tin bệnh nhân được chọn
+    #             self.selected_patient_id = patient_id
+    #             self.selected_patient_name = patient_name
+    #             # Clear form trước
+    #             self.clear_patient_form()
                 
-                # Chuyển đổi ngày sinh từ string sang datetime cho DateEntry
-                try:
-                    birth_date = datetime.strptime(patient_data[2], '%d/%m/%Y')
-                    self.patient_birth.set_date(birth_date)
-                except:
-                    pass
+    #             # Fill dữ liệu vào form
+    #             self.patient_name.insert(0, patient_data[1])
                 
-                self.patient_gender.set(patient_data[3])
-                self.patient_phone.insert(0, patient_data[4])
-                self.patient_address.insert(0, patient_data[5])
+    #             # Chuyển đổi ngày sinh từ string sang datetime cho DateEntry
+    #             try:
+    #                 birth_date = datetime.strptime(patient_data[2], '%d/%m/%Y')
+    #                 self.patient_birth.set_date(birth_date)
+    #             except:
+    #                 pass
+                
+    #             self.patient_gender.set(patient_data[3])
+    #             self.patient_phone.insert(0, patient_data[4])
+    #             self.patient_address.insert(0, patient_data[5])
 
     # Hàm clear form với DateEntry
     def clear_patient_form(self):
@@ -805,30 +811,64 @@ class MedicalRecordsApp:
     #     self.patient_address.set("")
     
     def delete_patient(self):
-        """Xóa bệnh nhân"""
+        """Xóa bệnh nhân và tất cả dữ liệu liên quan nếu người dùng đồng ý"""
         if not self.selected_patient_id:
             messagebox.showerror("Lỗi", "Vui lòng chọn một bệnh nhân để xóa!")
             return
 
-        if messagebox.askyesno("Xác nhận", "Bạn có chắc muốn xóa bệnh nhân này?"):
-            try:
-                # Kiểm tra xem bệnh nhân có bệnh án không
-                self.cursor.execute("SELECT COUNT(*) FROM medical_records WHERE patient_id = ?", 
-                                (self.selected_patient_id,))
-                record_count = self.cursor.fetchone()[0]
+        try:
+            # Kiểm tra xem bệnh nhân có bệnh án không
+            self.cursor.execute("SELECT COUNT(*) FROM medical_records WHERE patient_id = ?", 
+                              (self.selected_patient_id,))
+            record_count = self.cursor.fetchone()[0]
 
-                if record_count > 0:
-                    messagebox.showerror("Lỗi", "Không thể xóa bệnh nhân vì đã có bệnh án liên quan!")
-                    return
+            if record_count > 0:
+                # Hiển thị cảnh báo và hỏi người dùng
+                if not messagebox.askyesno(
+                    "Cảnh báo",
+                    f"Bệnh nhân này có {record_count} bệnh án liên quan. "
+                    "Xóa bệnh nhân sẽ xóa tất cả bệnh án, kết quả xét nghiệm và đơn thuốc liên quan. "
+                    "Bạn có chắc muốn tiếp tục?"
+                ):
+                    return  # Người dùng chọn "No", hủy thao tác
 
-                self.cursor.execute("DELETE FROM patients WHERE id = ?", (self.selected_patient_id,))
-                self.conn.commit()
-                messagebox.showinfo("Thành công", "Đã xóa bệnh nhân!")
-                self.clear_patient_form()
-                self.load_patients()
-                self.update_stats()
-            except Exception as e:
-                messagebox.showerror("Lỗi", f"Không thể xóa bệnh nhân: {e}")
+            if messagebox.askyesno("Xác nhận", "Bạn có chắc muốn xóa bệnh nhân này?"):
+                # Bắt đầu giao dịch
+                try:
+                    # Lấy danh sách record_id của bệnh nhân
+                    self.cursor.execute("SELECT id FROM medical_records WHERE patient_id = ?", 
+                                      (self.selected_patient_id,))
+                    record_ids = [row[0] for row in self.cursor.fetchall()]
+
+                    # Xóa đơn thuốc liên quan đến các bệnh án
+                    for record_id in record_ids:
+                        self.cursor.execute("DELETE FROM prescriptions WHERE record_id = ?", (record_id,))
+
+                    # Xóa kết quả xét nghiệm liên quan đến các bệnh án
+                    for record_id in record_ids:
+                        self.cursor.execute("DELETE FROM test_results WHERE record_id = ?", (record_id,))
+
+                    # Xóa bệnh án của bệnh nhân
+                    self.cursor.execute("DELETE FROM medical_records WHERE patient_id = ?", 
+                                      (self.selected_patient_id,))
+
+                    # Xóa bệnh nhân
+                    self.cursor.execute("DELETE FROM patients WHERE id = ?", (self.selected_patient_id,))
+
+                    # Commit giao dịch
+                    self.conn.commit()
+                    messagebox.showinfo("Thành công", "Đã xóa bệnh nhân và tất cả dữ liệu liên quan!")
+                    self.clear_patient_form()
+                    self.load_patients()
+                    self.update_stats()
+
+                except Exception as e:
+                    # Rollback nếu có lỗi
+                    self.conn.rollback()
+                    messagebox.showerror("Lỗi", f"Không thể xóa bệnh nhân: {e}")
+
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể kiểm tra bệnh án: {e}")
     
     def save_record(self):
         """Lưu bệnh án mới cùng với kết quả xét nghiệm và đơn thuốc"""
@@ -965,7 +1005,7 @@ class MedicalRecordsApp:
             messagebox.showerror("Lỗi", f"Không thể cập nhật: {str(e)}")
 
     def delete_record(self):
-        """Xóa bệnh án"""
+        """Xóa bệnh án và tất cả dữ liệu liên quan nếu người dùng đồng ý"""
         selected = self.record_tree.selection()
         if not selected:
             messagebox.showwarning("Cảnh báo", "Vui lòng chọn bệnh án để xóa!")
@@ -984,14 +1024,28 @@ class MedicalRecordsApp:
         prescription_count = self.cursor.fetchone()[0]
         
         if test_count > 0 or prescription_count > 0:
-            messagebox.showerror("Lỗi", "Không thể xóa bệnh án vì có kết quả xét nghiệm hoặc đơn thuốc liên quan!")
-            return
+            # Hiển thị cảnh báo và hỏi người dùng
+            if not messagebox.askyesno(
+                "Cảnh báo",
+                f"Bệnh án này có {test_count} kết quả xét nghiệm và {prescription_count} đơn thuốc liên quan. "
+                "Xóa bệnh án sẽ xóa tất cả dữ liệu liên quan. Bạn có chắc muốn tiếp tục?"
+            ):
+                return  # Người dùng chọn "No", hủy thao tác
         
         if messagebox.askyesno("Xác nhận", "Bạn có chắc chắn muốn xóa bệnh án này?"):
             try:
-                self.cursor.execute('DELETE FROM medical_records WHERE id=?', (record_id,))
+                # Xóa đơn thuốc liên quan
+                self.cursor.execute("DELETE FROM prescriptions WHERE record_id = ?", (record_id,))
+                
+                # Xóa kết quả xét nghiệm liên quan
+                self.cursor.execute("DELETE FROM test_results WHERE record_id = ?", (record_id,))
+                
+                # Xóa bệnh án
+                self.cursor.execute("DELETE FROM medical_records WHERE id = ?", (record_id,))
+                
+                # Commit giao dịch
                 self.conn.commit()
-                messagebox.showinfo("Thành công", "Đã xóa bệnh án!")
+                messagebox.showinfo("Thành công", "Đã xóa bệnh án và tất cả dữ liệu liên quan!")
                 self.clear_record_form()
                 
                 # Cập nhật danh sách bệnh án
@@ -999,6 +1053,8 @@ class MedicalRecordsApp:
                 self.load_medical_records(patient_id)  # Cập nhật medical_record_tree trong tab Chi tiết
                 
             except Exception as e:
+                # Rollback nếu có lỗi
+                self.conn.rollback()
                 messagebox.showerror("Lỗi", f"Không thể xóa: {str(e)}")
     
     def load_patients(self):
@@ -1084,6 +1140,7 @@ class MedicalRecordsApp:
         selected = self.patient_tree.selection()
         if selected:
             patient_data = self.patient_tree.item(selected[0])['values']
+            self.selected_patient_id = patient_data[0]
             self.patient_name.delete(0, tk.END)
             self.patient_name.insert(0, patient_data[1])
             self.patient_birth.delete(0, tk.END)
